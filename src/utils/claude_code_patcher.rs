@@ -1,5 +1,7 @@
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 use tree_sitter::{Node, Parser, Tree};
 
 #[derive(Debug, Clone)]
@@ -23,6 +25,139 @@ pub struct ClaudeCodePatcher {
 }
 
 impl ClaudeCodePatcher {
+    /// Resolve a Claude Code patch target.
+    ///
+    /// When `patch_path` is omitted, this searches PATH for `claude`.
+    /// If the discovered path is a pnpm/cmd-shim script, the
+    /// `# cmd-shim-target=...` line is used as the real cli.js target.
+    pub fn resolve_patch_target(
+        patch_path: Option<&str>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let candidate = Self::resolve_candidate_path(patch_path)?;
+
+        if patch_path.is_none() {
+            println!(
+                "🔎 Auto-detected claude executable: {}",
+                candidate.display()
+            );
+        }
+
+        if let Some(target) = Self::extract_cmd_shim_target(&candidate)? {
+            if !target.exists() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "Detected cmd-shim-target but target does not exist: {}",
+                        target.display()
+                    ),
+                )
+                .into());
+            }
+
+            println!("🔗 Detected pnpm/cmd-shim target: {}", target.display());
+            return Ok(target.to_string_lossy().to_string());
+        }
+
+        if !candidate.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Patch target not found: {}", candidate.display()),
+            )
+            .into());
+        }
+
+        Ok(candidate.to_string_lossy().to_string())
+    }
+
+    fn resolve_candidate_path(
+        patch_path: Option<&str>,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        match patch_path.map(str::trim).filter(|path| !path.is_empty()) {
+            Some(path) if Self::looks_like_command_name(path) => Self::find_executable(path),
+            Some(path) => {
+                let candidate = PathBuf::from(path);
+                if candidate.exists() {
+                    Ok(candidate)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("Patch target not found: {}", candidate.display()),
+                    )
+                    .into())
+                }
+            }
+            None => Self::find_executable("claude"),
+        }
+    }
+
+    fn looks_like_command_name(path: &str) -> bool {
+        !path.contains('/') && !path.contains('\\')
+    }
+
+    fn find_executable(command: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let path_var = env::var_os("PATH").ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("PATH is not set; pass ccline --patch /path/to/{command}/cli.js"),
+            )
+        })?;
+
+        #[cfg(windows)]
+        let candidates = [
+            command.to_string(),
+            format!("{command}.cmd"),
+            format!("{command}.exe"),
+            format!("{command}.ps1"),
+        ];
+
+        #[cfg(not(windows))]
+        let candidates = [command.to_string()];
+
+        for dir in env::split_paths(&path_var) {
+            for candidate_name in &candidates {
+                let candidate = dir.join(candidate_name);
+                if candidate.is_file() {
+                    return Ok(candidate);
+                }
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Could not find `{command}` in PATH; pass ccline --patch /path/to/cli.js"),
+        )
+        .into())
+    }
+
+    fn extract_cmd_shim_target(
+        shim_path: &Path,
+    ) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
+        let content = match fs::read_to_string(shim_path) {
+            Ok(content) => content,
+            Err(_) => return Ok(None),
+        };
+
+        for line in content.lines() {
+            let line = line.trim();
+            if let Some(raw_target) = line.strip_prefix("# cmd-shim-target=") {
+                let target = raw_target.trim().trim_matches('"');
+                if target.is_empty() {
+                    return Ok(None);
+                }
+
+                let target_path = PathBuf::from(target);
+                if target_path.is_absolute() {
+                    return Ok(Some(target_path));
+                }
+
+                let base_dir = shim_path.parent().unwrap_or_else(|| Path::new("."));
+                return Ok(Some(base_dir.join(target_path)));
+            }
+        }
+
+        Ok(None)
+    }
+
     pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, Box<dyn std::error::Error>> {
         let path = file_path.as_ref();
         let content = fs::read_to_string(path)?;
@@ -873,12 +1008,12 @@ impl ClaudeCodePatcher {
         match self.find_ultracode_dynamic_workflow_check(root) {
             Some(loc) => {
                 println!(
-                    "Replacing '{}' with '!!!!true' at position {}-{}",
+                    "Replacing '{}' with '!\"1\"==\"2\"' at position {}-{}",
                     loc.variable_name.as_ref().unwrap_or(&String::new()),
                     loc.start_index,
                     loc.end_index
                 );
-                let replacement = r#"!!!!true"#.to_string();
+                let replacement = r#"!"1"=="2""#.to_string();
                 self.show_diff(
                     "Ultracode Dynamic Workflow Gate",
                     &replacement,

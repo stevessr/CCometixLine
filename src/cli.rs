@@ -13,8 +13,10 @@ pub struct Cli {
     pub theme: Option<String>,
 
     /// Patch Claude Code cli.js to disable context warnings
-    #[arg(long = "patch")]
-    pub patch: Option<String>,
+    ///
+    /// If no path is provided, ccline auto-detects `claude` from PATH.
+    #[arg(long = "patch", value_name = "CLI_JS_OR_SHIM", num_args = 0..=1)]
+    pub patch: Option<Option<String>>,
 }
 
 impl Cli {

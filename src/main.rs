@@ -13,10 +13,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Handle Claude Code patcher
-    if let Some(claude_path) = cli.patch {
+    if let Some(patch_arg) = cli.patch {
         use ccometixline::utils::ClaudeCodePatcher;
 
         println!("🔧 Claude Code Context Warning Disabler");
+        let claude_path = ClaudeCodePatcher::resolve_patch_target(patch_arg.as_deref())?;
         println!("Target file: {}", claude_path);
 
         // Create backup in same directory

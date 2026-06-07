@@ -195,11 +195,19 @@ ccline --theme my-custom-theme
 
 ```bash
 # Disable context warnings and enable verbose mode
+ccline --patch
+
+# Or patch an explicit cli.js / shim path
 ccline --patch /path/to/claude-code/cli.js
 
-# Example for common installation
+# Examples for common installations
 ccline --patch ~/.local/share/fnm/node-versions/v24.4.1/installation/lib/node_modules/@anthropic-ai/claude-code/cli.js
+ccline --patch ~/.local/share/pnpm/bin/claude
 ```
+
+When patching without a path, `ccline` finds `claude` from `PATH`. For pnpm
+cmd-shims, it automatically reads `# cmd-shim-target=...` and patches the real
+`cli.js`.
 
 ## Default Segments
 

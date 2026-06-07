@@ -187,11 +187,18 @@ ccline --theme my-custom-theme
 
 ```bash
 # 禁用上下文警告并启用详细模式
+ccline --patch
+
+# 或指定 cli.js / shim 路径
 ccline --patch /path/to/claude-code/cli.js
 
 # 常见安装路径示例
 ccline --patch ~/.local/share/fnm/node-versions/v24.4.1/installation/lib/node_modules/@anthropic-ai/claude-code/cli.js
+ccline --patch ~/.local/share/pnpm/bin/claude
 ```
+
+不传路径时，`ccline` 会从 `PATH` 自动查找 `claude`。如果检测到 pnpm
+cmd-shim，会自动读取 `# cmd-shim-target=...` 并 patch 真实的 `cli.js`。
 
 ## 默认段落
 
