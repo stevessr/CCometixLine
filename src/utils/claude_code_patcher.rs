@@ -583,6 +583,73 @@ impl ClaudeCodePatcher {
     }
 
     // =========================================================================
+    // Patch 7: Ultracode Dynamic Workflow Gate
+    // =========================================================================
+
+    /// Find the Ultracode dynamic workflow guard using cached AST and anchor
+    fn find_ultracode_dynamic_workflow_check(&self, root: Node) -> Option<LocationResult> {
+        let anchor = "Ultracode needs dynamic workflows enabled";
+        let anchor_pos = self.file_content.find(anchor)?;
+        println!("Found Ultracode dynamic workflow anchor at position: {anchor_pos}");
+
+        self.find_ultracode_dynamic_if(root, anchor_pos)
+    }
+
+    fn find_ultracode_dynamic_if(&self, node: Node, anchor_pos: usize) -> Option<LocationResult> {
+        if node.kind() == "if_statement"
+            && node.start_byte() < anchor_pos
+            && anchor_pos - node.start_byte() < 300
+        {
+            let node_text = self.get_node_text(node);
+            if node_text.contains("Ultracode needs dynamic workflows enabled") {
+                if let Some(result) = self.check_ultracode_dynamic_condition(node) {
+                    return Some(result);
+                }
+            }
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if let Some(result) = self.find_ultracode_dynamic_if(child, anchor_pos) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    fn check_ultracode_dynamic_condition(&self, node: Node) -> Option<LocationResult> {
+        let condition = node.child_by_field_name("condition")?;
+        self.find_ultracode_guard_unary_expression(condition)
+    }
+
+    fn find_ultracode_guard_unary_expression(&self, node: Node) -> Option<LocationResult> {
+        if node.kind() == "unary_expression" {
+            let node_text = self.get_node_text(node);
+            if node_text.starts_with('!') && node_text.contains("Vx(") && node_text.contains("X7()")
+            {
+                let start = node.start_byte();
+                let end = node.end_byte();
+
+                println!("  Found Ultracode guard condition '{node_text}' at {start}-{end}");
+
+                return Some(LocationResult {
+                    start_index: start,
+                    end_index: end,
+                    variable_name: Some(node_text),
+                });
+            }
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if let Some(result) = self.find_ultracode_guard_unary_expression(child) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    // =========================================================================
     // Utility functions
     // =========================================================================
 
@@ -639,6 +706,7 @@ impl ClaudeCodePatcher {
                     ("Chrome subscription check", false),
                     ("/chrome command message", false),
                     ("Chrome startup notification", false),
+                    ("Ultracode dynamic workflow gate", false),
                 ];
             }
         };
@@ -798,6 +866,34 @@ impl ClaudeCodePatcher {
             None => {
                 println!("⚠️ Could not remove Chrome startup notification check");
                 results.push(("Chrome startup notification", false));
+            }
+        }
+
+        // 7. Ultracode dynamic workflow gate
+        match self.find_ultracode_dynamic_workflow_check(root) {
+            Some(loc) => {
+                println!(
+                    "Replacing '{}' with '!!!!true' at position {}-{}",
+                    loc.variable_name.as_ref().unwrap_or(&String::new()),
+                    loc.start_index,
+                    loc.end_index
+                );
+                let replacement = r#"!!!!true"#.to_string();
+                self.show_diff(
+                    "Ultracode Dynamic Workflow Gate",
+                    &replacement,
+                    loc.start_index,
+                    loc.end_index,
+                );
+                patches.push(PatchInfo {
+                    location: loc,
+                    replacement,
+                });
+                results.push(("Ultracode dynamic workflow gate", true));
+            }
+            None => {
+                println!("⚠️ Could not bypass Ultracode dynamic workflow gate");
+                results.push(("Ultracode dynamic workflow gate", false));
             }
         }
 
