@@ -785,6 +785,69 @@ impl ClaudeCodePatcher {
     }
 
     // =========================================================================
+    // Patch 8: Ultracode xhigh-capable Model Gate
+    // =========================================================================
+
+    /// Find every `Zu(H)` xhigh-capability call and replace each one with `true`.
+    fn find_all_zu_h_calls(&self, root: Node) -> Vec<LocationResult> {
+        let mut locations = Vec::new();
+        self.collect_zu_h_calls(root, &mut locations);
+
+        if locations.is_empty() {
+            println!("  ❌ Could not find any Zu(H) xhigh capability calls");
+        } else {
+            println!("  Found {} Zu(H) xhigh capability call(s)", locations.len());
+        }
+
+        locations
+    }
+
+    fn collect_zu_h_calls(&self, node: Node, locations: &mut Vec<LocationResult>) {
+        if self.is_zu_h_call(node) {
+            let call_text = self.get_node_text(node);
+            let start = node.start_byte();
+            let end = node.end_byte();
+
+            println!("  Found xhigh capability call '{call_text}' at {start}-{end}");
+
+            locations.push(LocationResult {
+                start_index: start,
+                end_index: end,
+                variable_name: Some(call_text),
+            });
+            return;
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_zu_h_calls(child, locations);
+        }
+    }
+
+    fn is_zu_h_call(&self, node: Node) -> bool {
+        if node.kind() != "call_expression" {
+            return false;
+        }
+
+        let Some(function) = node.child_by_field_name("function") else {
+            return false;
+        };
+        if self.get_node_text(function) != "Zu" {
+            return false;
+        }
+
+        let Some(arguments) = node.child_by_field_name("arguments") else {
+            return false;
+        };
+        let Some(first_argument) = self.get_nth_argument(arguments, 0) else {
+            return false;
+        };
+
+        self.get_node_text(first_argument).trim() == "H"
+            && self.get_nth_argument(arguments, 1).is_none()
+    }
+
+    // =========================================================================
     // Utility functions
     // =========================================================================
 
@@ -842,6 +905,7 @@ impl ClaudeCodePatcher {
                     ("/chrome command message", false),
                     ("Chrome startup notification", false),
                     ("Ultracode dynamic workflow gate", false),
+                    ("Ultracode Zu(H) calls", false),
                 ];
             }
         };
@@ -1030,6 +1094,34 @@ impl ClaudeCodePatcher {
                 println!("⚠️ Could not bypass Ultracode dynamic workflow gate");
                 results.push(("Ultracode dynamic workflow gate", false));
             }
+        }
+
+        // 8. Ultracode xhigh-capable model gate
+        let zu_h_locations = self.find_all_zu_h_calls(root);
+        if zu_h_locations.is_empty() {
+            println!("⚠️ Could not bypass Ultracode Zu(H) xhigh capability calls");
+            results.push(("Ultracode Zu(H) calls", false));
+        } else {
+            for loc in zu_h_locations {
+                println!(
+                    "Replacing '{}' with 'true' at position {}-{}",
+                    loc.variable_name.as_ref().unwrap_or(&String::new()),
+                    loc.start_index,
+                    loc.end_index
+                );
+                let replacement = "true".to_string();
+                self.show_diff(
+                    "Ultracode xhigh Model Gate",
+                    &replacement,
+                    loc.start_index,
+                    loc.end_index,
+                );
+                patches.push(PatchInfo {
+                    location: loc,
+                    replacement,
+                });
+            }
+            results.push(("Ultracode Zu(H) calls", true));
         }
 
         // Sort patches by position descending (apply from end to start to avoid offset issues)
