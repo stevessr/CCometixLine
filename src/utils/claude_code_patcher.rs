@@ -27,11 +27,11 @@ pub enum PatchLevel {
     Medium,
     /// Medium + Chrome subscription features
     High,
-    /// High + Ultracode dynamic workflow gate
+    /// High + Ultracode patches (dynamic workflow + xhigh model gate)
     Xhigh,
-    /// All patches including Ultracode xhigh model gate
+    /// All patches (same as Xhigh currently)
     Max,
-    /// Only Ultracode-specific patches (dynamic workflow + xhigh model)
+    /// Only Ultracode-specific patches (dynamic workflow + xhigh model gate)
     Ultracode,
     /// Auto-detect recommended level (defaults to high)
     Auto,
@@ -58,7 +58,7 @@ impl PatchLevel {
                     | "/chrome command message"
                     | "Chrome startup notification"
             ),
-            PatchLevel::Xhigh => matches!(
+            PatchLevel::Xhigh | PatchLevel::Max => matches!(
                 patch,
                 "Spinner token counter"
                     | "Context low warnings"
@@ -66,13 +66,9 @@ impl PatchLevel {
                     | "Chrome subscription check"
                     | "/chrome command message"
                     | "Chrome startup notification"
-                    | "Ultracode dynamic workflow gate"
+                    | "Ultracode patches"
             ),
-            PatchLevel::Max => true, // Apply all patches
-            PatchLevel::Ultracode => matches!(
-                patch,
-                "Ultracode dynamic workflow gate" | "Ultracode Zu(H) calls"
-            ),
+            PatchLevel::Ultracode => matches!(patch, "Ultracode patches"),
             PatchLevel::Auto => {
                 // Auto defaults to High level
                 matches!(
@@ -958,77 +954,6 @@ impl ClaudeCodePatcher {
     // Optimized batch patching - parse once, apply all
     // =========================================================================
 
-    /// Patch level controls which patches are applied
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum PatchLevel {
-        /// Minimal patches (token counter, context warnings)
-        Low,
-        /// Low + ESC interrupt display
-        Medium,
-        /// Medium + Chrome subscription features
-        High,
-        /// High + Ultracode dynamic workflow gate
-        Xhigh,
-        /// All patches including Ultracode xhigh model gate
-        Max,
-        /// Only Ultracode-specific patches (dynamic workflow + xhigh model)
-        Ultracode,
-        /// Auto-detect recommended level (defaults to high)
-        Auto,
-    }
-
-    impl PatchLevel {
-        /// Check if a specific patch should be applied at this level
-        fn should_apply(&self, patch: &str) -> bool {
-            match self {
-                PatchLevel::Low => matches!(
-                    patch,
-                    "Spinner token counter" | "Context low warnings"
-                ),
-                PatchLevel::Medium => matches!(
-                    patch,
-                    "Spinner token counter" | "Context low warnings" | "ESC interrupt display"
-                ),
-                PatchLevel::High => matches!(
-                    patch,
-                    "Spinner token counter"
-                        | "Context low warnings"
-                        | "ESC interrupt display"
-                        | "Chrome subscription check"
-                        | "/chrome command message"
-                        | "Chrome startup notification"
-                ),
-                PatchLevel::Xhigh => matches!(
-                    patch,
-                    "Spinner token counter"
-                        | "Context low warnings"
-                        | "ESC interrupt display"
-                        | "Chrome subscription check"
-                        | "/chrome command message"
-                        | "Chrome startup notification"
-                        | "Ultracode dynamic workflow gate"
-                ),
-                PatchLevel::Max => true, // Apply all patches
-                PatchLevel::Ultracode => matches!(
-                    patch,
-                    "Ultracode dynamic workflow gate" | "Ultracode Zu(H) calls"
-                ),
-                PatchLevel::Auto => {
-                    // Auto defaults to High level
-                    matches!(
-                        patch,
-                        "Spinner token counter"
-                            | "Context low warnings"
-                            | "ESC interrupt display"
-                            | "Chrome subscription check"
-                            | "/chrome command message"
-                            | "Chrome startup notification"
-                    )
-                }
-            }
-        }
-    }
-
     /// Apply all patches using optimized single-parse strategy
     /// Returns results in the same order as the original implementation
     pub fn apply_all_patches(&mut self) -> Vec<(&'static str, bool)> {
@@ -1051,8 +976,7 @@ impl ClaudeCodePatcher {
                     ("Chrome subscription check", false),
                     ("/chrome command message", false),
                     ("Chrome startup notification", false),
-                    ("Ultracode dynamic workflow gate", false),
-                    ("Ultracode Zu(H) calls", false),
+                    ("Ultracode patches", false),
                 ];
             }
         };
@@ -1242,8 +1166,12 @@ impl ClaudeCodePatcher {
             );
         }
 
-        // 7. Ultracode dynamic workflow gate
-        if level.should_apply("Ultracode dynamic workflow gate") {
+        // 7. Ultracode patches (dynamic workflow gate + xhigh model gate)
+        if level.should_apply("Ultracode patches") {
+            let mut ultracode_success = false;
+            let mut ultracode_patches_applied = 0;
+
+            // 7a. Ultracode dynamic workflow gate
             match self.find_ultracode_dynamic_workflow_check(root) {
                 Some(loc) => {
                     println!(
@@ -1263,27 +1191,16 @@ impl ClaudeCodePatcher {
                         location: loc,
                         replacement,
                     });
-                    results.push(("Ultracode dynamic workflow gate", true));
+                    ultracode_patches_applied += 1;
                 }
                 None => {
                     println!("⚠️ Could not bypass Ultracode dynamic workflow gate");
-                    results.push(("Ultracode dynamic workflow gate", false));
                 }
             }
-        } else {
-            println!(
-                "⏭️ Skipping Ultracode dynamic workflow gate (level: {:?})",
-                level
-            );
-        }
 
-        // 8. Ultracode xhigh-capable model gate
-        if level.should_apply("Ultracode Zu(H) calls") {
+            // 7b. Ultracode xhigh-capable model gate
             let zu_h_locations = self.find_all_zu_h_calls(root);
-            if zu_h_locations.is_empty() {
-                println!("⚠️ Could not bypass Ultracode Zu(H) xhigh capability calls");
-                results.push(("Ultracode Zu(H) calls", false));
-            } else {
+            if !zu_h_locations.is_empty() {
                 for loc in zu_h_locations {
                     println!(
                         "Replacing '{}' with 'true' at position {}-{}",
@@ -1303,10 +1220,22 @@ impl ClaudeCodePatcher {
                         replacement,
                     });
                 }
-                results.push(("Ultracode Zu(H) calls", true));
+                ultracode_patches_applied += 1;
+            } else {
+                println!("⚠️ Could not bypass Ultracode Zu(H) xhigh capability calls");
             }
+
+            if ultracode_patches_applied > 0 {
+                ultracode_success = true;
+                println!(
+                    "✅ Applied {} Ultracode sub-patches",
+                    ultracode_patches_applied
+                );
+            }
+
+            results.push(("Ultracode patches", ultracode_success));
         } else {
-            println!("⏭️ Skipping Ultracode Zu(H) calls (level: {:?})", level);
+            println!("⏭️ Skipping Ultracode patches (level: {:?})", level);
         }
 
         // Sort patches by position descending (apply from end to start to avoid offset issues)

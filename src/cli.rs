@@ -8,11 +8,11 @@ pub enum PatchLevel {
     Medium,
     /// Medium + Chrome subscription features
     High,
-    /// High + Ultracode dynamic workflow gate
+    /// High + Ultracode patches (dynamic workflow + xhigh model gate)
     Xhigh,
-    /// All patches including Ultracode xhigh model gate
+    /// All patches (same as Xhigh currently)
     Max,
-    /// Only Ultracode-specific patches (dynamic workflow + xhigh model)
+    /// Only Ultracode-specific patches (dynamic workflow + xhigh model gate)
     Ultracode,
     /// Auto-detect recommended level (defaults to high)
     Auto,
