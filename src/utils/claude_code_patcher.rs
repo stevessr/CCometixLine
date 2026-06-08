@@ -58,7 +58,7 @@ impl PatchLevel {
                     | "/chrome command message"
                     | "Chrome startup notification"
             ),
-            PatchLevel::Xhigh | PatchLevel::Max => matches!(
+            PatchLevel::Xhigh => matches!(
                 patch,
                 "Spinner token counter"
                     | "Context low warnings"
@@ -68,9 +68,20 @@ impl PatchLevel {
                     | "Chrome startup notification"
                     | "Ultracode patches"
             ),
+            PatchLevel::Max => matches!(
+                patch,
+                "Spinner token counter"
+                    | "Context low warnings"
+                    | "ESC interrupt display"
+                    | "Chrome subscription check"
+                    | "/chrome command message"
+                    | "Chrome startup notification"
+                    | "Ultracode patches"
+                    | "Remote Control patches"
+            ),
             PatchLevel::Ultracode => matches!(patch, "Ultracode patches"),
             PatchLevel::Auto => {
-                // Auto defaults to Max level (all patches including Ultracode)
+                // Auto defaults to Max level (all patches)
                 true
             }
         }
@@ -907,6 +918,65 @@ impl ClaudeCodePatcher {
     }
 
     // =========================================================================
+    // Patch 9: Remote Control Gate Functions
+    // =========================================================================
+
+    /// Find Remote Control gate functions using AST
+    fn find_remote_control_gate_functions(&self, root: Node) -> Vec<LocationResult> {
+        let mut locations = Vec::new();
+
+        // Find all function declarations
+        self.find_remote_control_functions_recursive(root, &mut locations);
+
+        if locations.is_empty() {
+            println!("  ❌ Could not find Remote Control gate functions");
+        } else {
+            println!("  Found {} Remote Control gate function(s)", locations.len());
+        }
+
+        locations
+    }
+
+    fn find_remote_control_functions_recursive(&self, node: Node, locations: &mut Vec<LocationResult>) {
+        // Check if this is a function declaration
+        if node.kind() == "function_declaration" || node.kind() == "function" {
+            let func_text = self.get_node_text(node);
+
+            // Check for function Ty() with Remote Control logic
+            if func_text.starts_with("function Ty()") &&
+               (func_text.contains("GIH()") || func_text.contains("o$$()")) &&
+               func_text.len() < 200 {
+                println!("  Found function Ty() at {}-{}", node.start_byte(), node.end_byte());
+                locations.push(LocationResult {
+                    start_index: node.start_byte(),
+                    end_index: node.end_byte(),
+                    variable_name: Some("function Ty()".to_string()),
+                });
+                return;
+            }
+
+            // Check for async function Hl6() with Remote Control logic
+            if func_text.starts_with("async function Hl6()") &&
+               (func_text.contains("tengu_ccr_bridge") || func_text.contains("GIH()")) &&
+               func_text.len() < 300 {
+                println!("  Found async function Hl6() at {}-{}", node.start_byte(), node.end_byte());
+                locations.push(LocationResult {
+                    start_index: node.start_byte(),
+                    end_index: node.end_byte(),
+                    variable_name: Some("async function Hl6()".to_string()),
+                });
+                return;
+            }
+        }
+
+        // Recursively search children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.find_remote_control_functions_recursive(child, locations);
+        }
+    }
+
+    // =========================================================================
     // Utility functions
     // =========================================================================
 
@@ -969,6 +1039,7 @@ impl ClaudeCodePatcher {
                     ("/chrome command message", false),
                     ("Chrome startup notification", false),
                     ("Ultracode patches", false),
+                    ("Remote Control patches", false),
                 ];
             }
         };
@@ -1228,6 +1299,44 @@ impl ClaudeCodePatcher {
             results.push(("Ultracode patches", ultracode_success));
         } else {
             println!("⏭️ Skipping Ultracode patches (level: {:?})", level);
+        }
+
+        // 8. Remote Control patches (gate functions)
+        if level.should_apply("Remote Control patches") {
+            let gate_locations = self.find_remote_control_gate_functions(root);
+            if gate_locations.is_empty() {
+                println!("⚠️ Could not find Remote Control gate functions");
+                results.push(("Remote Control patches", false));
+            } else {
+                for loc in gate_locations {
+                    let func_name = loc.variable_name.as_ref().unwrap_or(&"unknown".to_string()).clone();
+                    println!(
+                        "Replacing gate function '{}' at position {}-{}",
+                        func_name,
+                        loc.start_index,
+                        loc.end_index
+                    );
+                    // Replace the entire function to always return true
+                    let replacement = if func_name.contains("async") {
+                        "async function Hl6(){return!0}".to_string()
+                    } else {
+                        "function Ty(){return!0}".to_string()
+                    };
+                    self.show_diff(
+                        &format!("Remote Control Gate: {}", func_name),
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                }
+                results.push(("Remote Control patches", true));
+            }
+        } else {
+            println!("⏭️ Skipping Remote Control patches (level: {:?})", level);
         }
 
         // Sort patches by position descending (apply from end to start to avoid offset issues)
