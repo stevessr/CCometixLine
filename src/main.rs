@@ -16,7 +16,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(patch_arg) = cli.patch {
         use ccometixline::utils::ClaudeCodePatcher;
 
-        println!("🔧 Claude Code Context Warning Disabler");
+        // Convert CLI PatchLevel to patcher PatchLevel
+        let patch_level = match cli.patch_level {
+            ccometixline::cli::PatchLevel::Low => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::Low
+            }
+            ccometixline::cli::PatchLevel::Medium => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::Medium
+            }
+            ccometixline::cli::PatchLevel::High => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::High
+            }
+            ccometixline::cli::PatchLevel::Xhigh => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::Xhigh
+            }
+            ccometixline::cli::PatchLevel::Max => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::Max
+            }
+            ccometixline::cli::PatchLevel::Ultracode => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::Ultracode
+            }
+            ccometixline::cli::PatchLevel::Auto => {
+                ccometixline::utils::claude_code_patcher::PatchLevel::Auto
+            }
+        };
+
+        println!("🔧 Claude Code Patcher (Level: {:?})", patch_level);
         let claude_path = ClaudeCodePatcher::resolve_patch_target(patch_arg.as_deref())?;
         println!("Target file: {}", claude_path);
 
@@ -29,11 +54,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut patcher = ClaudeCodePatcher::new(&claude_path)?;
 
         println!("\n🔄 Applying patches...");
-        let results = patcher.apply_all_patches();
+        let results = patcher.apply_patches_with_level(patch_level);
         patcher.save()?;
 
         ClaudeCodePatcher::print_summary(&results);
-        println!("💡 To restore warnings, replace your cli.js with the backup file:");
+        println!("💡 To restore original file, replace with the backup:");
         println!("   cp {} {}", backup_path, claude_path);
 
         return Ok(());

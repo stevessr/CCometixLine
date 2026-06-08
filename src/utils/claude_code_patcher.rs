@@ -18,6 +18,77 @@ struct PatchInfo {
     replacement: String,
 }
 
+/// Patch level controls which patches are applied
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchLevel {
+    /// Minimal patches (token counter, context warnings)
+    Low,
+    /// Low + ESC interrupt display
+    Medium,
+    /// Medium + Chrome subscription features
+    High,
+    /// High + Ultracode dynamic workflow gate
+    Xhigh,
+    /// All patches including Ultracode xhigh model gate
+    Max,
+    /// Only Ultracode-specific patches (dynamic workflow + xhigh model)
+    Ultracode,
+    /// Auto-detect recommended level (defaults to high)
+    Auto,
+}
+
+impl PatchLevel {
+    /// Check if a specific patch should be applied at this level
+    fn should_apply(&self, patch: &str) -> bool {
+        match self {
+            PatchLevel::Low => matches!(
+                patch,
+                "Spinner token counter" | "Context low warnings"
+            ),
+            PatchLevel::Medium => matches!(
+                patch,
+                "Spinner token counter" | "Context low warnings" | "ESC interrupt display"
+            ),
+            PatchLevel::High => matches!(
+                patch,
+                "Spinner token counter"
+                    | "Context low warnings"
+                    | "ESC interrupt display"
+                    | "Chrome subscription check"
+                    | "/chrome command message"
+                    | "Chrome startup notification"
+            ),
+            PatchLevel::Xhigh => matches!(
+                patch,
+                "Spinner token counter"
+                    | "Context low warnings"
+                    | "ESC interrupt display"
+                    | "Chrome subscription check"
+                    | "/chrome command message"
+                    | "Chrome startup notification"
+                    | "Ultracode dynamic workflow gate"
+            ),
+            PatchLevel::Max => true, // Apply all patches
+            PatchLevel::Ultracode => matches!(
+                patch,
+                "Ultracode dynamic workflow gate" | "Ultracode Zu(H) calls"
+            ),
+            PatchLevel::Auto => {
+                // Auto defaults to High level
+                matches!(
+                    patch,
+                    "Spinner token counter"
+                        | "Context low warnings"
+                        | "ESC interrupt display"
+                        | "Chrome subscription check"
+                        | "/chrome command message"
+                        | "Chrome startup notification"
+                )
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ClaudeCodePatcher {
     file_content: String,
@@ -887,9 +958,85 @@ impl ClaudeCodePatcher {
     // Optimized batch patching - parse once, apply all
     // =========================================================================
 
+    /// Patch level controls which patches are applied
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PatchLevel {
+        /// Minimal patches (token counter, context warnings)
+        Low,
+        /// Low + ESC interrupt display
+        Medium,
+        /// Medium + Chrome subscription features
+        High,
+        /// High + Ultracode dynamic workflow gate
+        Xhigh,
+        /// All patches including Ultracode xhigh model gate
+        Max,
+        /// Only Ultracode-specific patches (dynamic workflow + xhigh model)
+        Ultracode,
+        /// Auto-detect recommended level (defaults to high)
+        Auto,
+    }
+
+    impl PatchLevel {
+        /// Check if a specific patch should be applied at this level
+        fn should_apply(&self, patch: &str) -> bool {
+            match self {
+                PatchLevel::Low => matches!(
+                    patch,
+                    "Spinner token counter" | "Context low warnings"
+                ),
+                PatchLevel::Medium => matches!(
+                    patch,
+                    "Spinner token counter" | "Context low warnings" | "ESC interrupt display"
+                ),
+                PatchLevel::High => matches!(
+                    patch,
+                    "Spinner token counter"
+                        | "Context low warnings"
+                        | "ESC interrupt display"
+                        | "Chrome subscription check"
+                        | "/chrome command message"
+                        | "Chrome startup notification"
+                ),
+                PatchLevel::Xhigh => matches!(
+                    patch,
+                    "Spinner token counter"
+                        | "Context low warnings"
+                        | "ESC interrupt display"
+                        | "Chrome subscription check"
+                        | "/chrome command message"
+                        | "Chrome startup notification"
+                        | "Ultracode dynamic workflow gate"
+                ),
+                PatchLevel::Max => true, // Apply all patches
+                PatchLevel::Ultracode => matches!(
+                    patch,
+                    "Ultracode dynamic workflow gate" | "Ultracode Zu(H) calls"
+                ),
+                PatchLevel::Auto => {
+                    // Auto defaults to High level
+                    matches!(
+                        patch,
+                        "Spinner token counter"
+                            | "Context low warnings"
+                            | "ESC interrupt display"
+                            | "Chrome subscription check"
+                            | "/chrome command message"
+                            | "Chrome startup notification"
+                    )
+                }
+            }
+        }
+    }
+
     /// Apply all patches using optimized single-parse strategy
     /// Returns results in the same order as the original implementation
     pub fn apply_all_patches(&mut self) -> Vec<(&'static str, bool)> {
+        self.apply_patches_with_level(PatchLevel::Auto)
+    }
+
+    /// Apply patches based on the specified level
+    pub fn apply_patches_with_level(&mut self, level: PatchLevel) -> Vec<(&'static str, bool)> {
         let mut results = Vec::new();
 
         // Parse AST only once
@@ -914,214 +1061,252 @@ impl ClaudeCodePatcher {
         let mut patches: Vec<PatchInfo> = Vec::new();
 
         // 1. Spinner token counter (verbose property)
-        match self.find_spinner_verbose_property(root) {
-            Some(loc) => {
-                let replacement = "verbose:true".to_string();
-                self.show_diff(
-                    "Spinner Token Counter",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("Spinner token counter", true));
+        if level.should_apply("Spinner token counter") {
+            match self.find_spinner_verbose_property(root) {
+                Some(loc) => {
+                    let replacement = "verbose:true".to_string();
+                    self.show_diff(
+                        "Spinner Token Counter",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("Spinner token counter", true));
+                }
+                None => {
+                    println!("⚠️ Could not enable Spinner token counter");
+                    results.push(("Spinner token counter", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not enable Spinner token counter");
-                results.push(("Spinner token counter", false));
-            }
+        } else {
+            println!("⏭️ Skipping Spinner token counter (level: {:?})", level);
         }
 
         // 2. Context low warnings
-        match self.find_context_low_condition(root) {
-            Some(loc) => {
-                let replacement = "if(true)return null;".to_string();
-                self.show_diff(
-                    "Context Low Condition",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("Context low warnings", true));
+        if level.should_apply("Context low warnings") {
+            match self.find_context_low_condition(root) {
+                Some(loc) => {
+                    let replacement = "if(true)return null;".to_string();
+                    self.show_diff(
+                        "Context Low Condition",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("Context low warnings", true));
+                }
+                None => {
+                    println!("⚠️ Could not disable context low warnings");
+                    results.push(("Context low warnings", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not disable context low warnings");
-                results.push(("Context low warnings", false));
-            }
+        } else {
+            println!("⏭️ Skipping Context low warnings (level: {:?})", level);
         }
 
         // 3. ESC interrupt display
-        match self.find_esc_interrupt_condition(root) {
-            Some(loc) => {
-                let original_condition = loc.variable_name.clone().unwrap_or_default();
-                println!(
-                    "Replacing condition '{}' with '(false)' at position {}-{}",
-                    original_condition, loc.start_index, loc.end_index
-                );
-                let replacement = "(false)".to_string();
-                self.show_diff(
-                    "ESC Interrupt",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("ESC interrupt display", true));
+        if level.should_apply("ESC interrupt display") {
+            match self.find_esc_interrupt_condition(root) {
+                Some(loc) => {
+                    let original_condition = loc.variable_name.clone().unwrap_or_default();
+                    println!(
+                        "Replacing condition '{}' with '(false)' at position {}-{}",
+                        original_condition, loc.start_index, loc.end_index
+                    );
+                    let replacement = "(false)".to_string();
+                    self.show_diff(
+                        "ESC Interrupt",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("ESC interrupt display", true));
+                }
+                None => {
+                    println!("⚠️ Could not disable esc/interrupt display");
+                    results.push(("ESC interrupt display", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not disable esc/interrupt display");
-                results.push(("ESC interrupt display", false));
-            }
+        } else {
+            println!("⏭️ Skipping ESC interrupt display (level: {:?})", level);
         }
 
         // 4. Chrome subscription check
-        match self.find_chrome_subscription_check(root) {
-            Some(loc) => {
-                println!(
-                    "Removing '{}' at position {}-{}",
-                    loc.variable_name.as_ref().unwrap_or(&String::new()),
-                    loc.start_index,
-                    loc.end_index
-                );
-                let replacement = "".to_string();
-                self.show_diff(
-                    "Chrome Subscription Check",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("Chrome subscription check", true));
+        if level.should_apply("Chrome subscription check") {
+            match self.find_chrome_subscription_check(root) {
+                Some(loc) => {
+                    println!(
+                        "Removing '{}' at position {}-{}",
+                        loc.variable_name.as_ref().unwrap_or(&String::new()),
+                        loc.start_index,
+                        loc.end_index
+                    );
+                    let replacement = "".to_string();
+                    self.show_diff(
+                        "Chrome Subscription Check",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("Chrome subscription check", true));
+                }
+                None => {
+                    println!("⚠️ Could not bypass Chrome subscription check");
+                    results.push(("Chrome subscription check", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not bypass Chrome subscription check");
-                results.push(("Chrome subscription check", false));
-            }
+        } else {
+            println!("⏭️ Skipping Chrome subscription check (level: {:?})", level);
         }
 
         // 5. /chrome command message
-        match self.find_chrome_command_message(root) {
-            Some(loc) => {
-                println!(
-                    "Replacing '{}' with 'false&&' at position {}-{}",
-                    loc.variable_name.as_ref().unwrap_or(&String::new()),
-                    loc.start_index,
-                    loc.end_index
-                );
-                let replacement = "false&&".to_string();
-                self.show_diff(
-                    "/chrome Command Message",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("/chrome command message", true));
+        if level.should_apply("/chrome command message") {
+            match self.find_chrome_command_message(root) {
+                Some(loc) => {
+                    println!(
+                        "Replacing '{}' with 'false&&' at position {}-{}",
+                        loc.variable_name.as_ref().unwrap_or(&String::new()),
+                        loc.start_index,
+                        loc.end_index
+                    );
+                    let replacement = "false&&".to_string();
+                    self.show_diff(
+                        "/chrome Command Message",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("/chrome command message", true));
+                }
+                None => {
+                    println!("⚠️ Could not remove /chrome command subscription message");
+                    results.push(("/chrome command message", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not remove /chrome command subscription message");
-                results.push(("/chrome command message", false));
-            }
+        } else {
+            println!("⏭️ Skipping /chrome command message (level: {:?})", level);
         }
 
         // 6. Chrome startup notification
-        match self.find_chrome_startup_notification_check(root) {
-            Some(loc) => {
-                println!(
-                    "Replacing '{}' with 'false' at position {}-{}",
-                    loc.variable_name.as_ref().unwrap_or(&String::new()),
-                    loc.start_index,
-                    loc.end_index
-                );
-                let replacement = "false".to_string();
-                self.show_diff(
-                    "Chrome Startup Notification",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("Chrome startup notification", true));
+        if level.should_apply("Chrome startup notification") {
+            match self.find_chrome_startup_notification_check(root) {
+                Some(loc) => {
+                    println!(
+                        "Replacing '{}' with 'false' at position {}-{}",
+                        loc.variable_name.as_ref().unwrap_or(&String::new()),
+                        loc.start_index,
+                        loc.end_index
+                    );
+                    let replacement = "false".to_string();
+                    self.show_diff(
+                        "Chrome Startup Notification",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("Chrome startup notification", true));
+                }
+                None => {
+                    println!("⚠️ Could not remove Chrome startup notification check");
+                    results.push(("Chrome startup notification", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not remove Chrome startup notification check");
-                results.push(("Chrome startup notification", false));
-            }
+        } else {
+            println!(
+                "⏭️ Skipping Chrome startup notification (level: {:?})",
+                level
+            );
         }
 
         // 7. Ultracode dynamic workflow gate
-        match self.find_ultracode_dynamic_workflow_check(root) {
-            Some(loc) => {
-                println!(
-                    "Replacing '{}' with '!\"1\"==\"2\"' at position {}-{}",
-                    loc.variable_name.as_ref().unwrap_or(&String::new()),
-                    loc.start_index,
-                    loc.end_index
-                );
-                let replacement = r#"!"1"=="2""#.to_string();
-                self.show_diff(
-                    "Ultracode Dynamic Workflow Gate",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
-                results.push(("Ultracode dynamic workflow gate", true));
+        if level.should_apply("Ultracode dynamic workflow gate") {
+            match self.find_ultracode_dynamic_workflow_check(root) {
+                Some(loc) => {
+                    println!(
+                        "Replacing '{}' with '!\"1\"==\"2\"' at position {}-{}",
+                        loc.variable_name.as_ref().unwrap_or(&String::new()),
+                        loc.start_index,
+                        loc.end_index
+                    );
+                    let replacement = r#"!"1"=="2""#.to_string();
+                    self.show_diff(
+                        "Ultracode Dynamic Workflow Gate",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                    results.push(("Ultracode dynamic workflow gate", true));
+                }
+                None => {
+                    println!("⚠️ Could not bypass Ultracode dynamic workflow gate");
+                    results.push(("Ultracode dynamic workflow gate", false));
+                }
             }
-            None => {
-                println!("⚠️ Could not bypass Ultracode dynamic workflow gate");
-                results.push(("Ultracode dynamic workflow gate", false));
-            }
+        } else {
+            println!(
+                "⏭️ Skipping Ultracode dynamic workflow gate (level: {:?})",
+                level
+            );
         }
 
         // 8. Ultracode xhigh-capable model gate
-        let zu_h_locations = self.find_all_zu_h_calls(root);
-        if zu_h_locations.is_empty() {
-            println!("⚠️ Could not bypass Ultracode Zu(H) xhigh capability calls");
-            results.push(("Ultracode Zu(H) calls", false));
-        } else {
-            for loc in zu_h_locations {
-                println!(
-                    "Replacing '{}' with 'true' at position {}-{}",
-                    loc.variable_name.as_ref().unwrap_or(&String::new()),
-                    loc.start_index,
-                    loc.end_index
-                );
-                let replacement = "true".to_string();
-                self.show_diff(
-                    "Ultracode xhigh Model Gate",
-                    &replacement,
-                    loc.start_index,
-                    loc.end_index,
-                );
-                patches.push(PatchInfo {
-                    location: loc,
-                    replacement,
-                });
+        if level.should_apply("Ultracode Zu(H) calls") {
+            let zu_h_locations = self.find_all_zu_h_calls(root);
+            if zu_h_locations.is_empty() {
+                println!("⚠️ Could not bypass Ultracode Zu(H) xhigh capability calls");
+                results.push(("Ultracode Zu(H) calls", false));
+            } else {
+                for loc in zu_h_locations {
+                    println!(
+                        "Replacing '{}' with 'true' at position {}-{}",
+                        loc.variable_name.as_ref().unwrap_or(&String::new()),
+                        loc.start_index,
+                        loc.end_index
+                    );
+                    let replacement = "true".to_string();
+                    self.show_diff(
+                        "Ultracode xhigh Model Gate",
+                        &replacement,
+                        loc.start_index,
+                        loc.end_index,
+                    );
+                    patches.push(PatchInfo {
+                        location: loc,
+                        replacement,
+                    });
+                }
+                results.push(("Ultracode Zu(H) calls", true));
             }
-            results.push(("Ultracode Zu(H) calls", true));
+        } else {
+            println!("⏭️ Skipping Ultracode Zu(H) calls (level: {:?})", level);
         }
 
         // Sort patches by position descending (apply from end to start to avoid offset issues)
