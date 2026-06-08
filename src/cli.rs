@@ -14,7 +14,7 @@ pub enum PatchLevel {
     Max,
     /// Only Ultracode-specific patches (dynamic workflow + xhigh model gate)
     Ultracode,
-    /// Auto-detect recommended level (defaults to high)
+    /// Auto-detect recommended level (defaults to max - all patches)
     Auto,
 }
 

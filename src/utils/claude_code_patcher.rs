@@ -33,7 +33,7 @@ pub enum PatchLevel {
     Max,
     /// Only Ultracode-specific patches (dynamic workflow + xhigh model gate)
     Ultracode,
-    /// Auto-detect recommended level (defaults to high)
+    /// Auto-detect recommended level (defaults to max - all patches)
     Auto,
 }
 
@@ -70,16 +70,8 @@ impl PatchLevel {
             ),
             PatchLevel::Ultracode => matches!(patch, "Ultracode patches"),
             PatchLevel::Auto => {
-                // Auto defaults to High level
-                matches!(
-                    patch,
-                    "Spinner token counter"
-                        | "Context low warnings"
-                        | "ESC interrupt display"
-                        | "Chrome subscription check"
-                        | "/chrome command message"
-                        | "Chrome startup notification"
-                )
+                // Auto defaults to Max level (all patches including Ultracode)
+                true
             }
         }
     }
